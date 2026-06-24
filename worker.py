@@ -17,7 +17,7 @@ def process_job(job: Job) -> bool:
     We randomly fail ~30% of the time to actually exercise the retry logic.
     """
     print(f"[worker] Processing job {job.id} ({job.job_type})...")
-    time.sleep(1)  
+    time.sleep(0.05)
     success = random.random() > 0.3
     return success
 

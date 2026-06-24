@@ -1,9 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
-from database import engine, Base, get_db, redis_client
+from database import engine, Base, get_db, redis_client, SessionLocal
 from models import Job
 from schemas import JobCreate, JobOut
+
+import asyncio
 
 Base.metadata.create_all(bind=engine)
 
@@ -57,3 +59,27 @@ def get_stats(db: Session = Depends(get_db)):
         "completed": completed,
         "failed": failed,
     }
+
+@app.websocket("/ws/stats")
+async def stats_websocket(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            db = SessionLocal()
+            queue_depth = redis_client.llen(QUEUE_KEY)
+            dead_letter_count = redis_client.llen(DEAD_LETTER_KEY)
+            total_jobs = db.query(Job).count()
+            completed = db.query(Job).filter(Job.status == "completed").count()
+            failed = db.query(Job).filter(Job.status == "dead").count()
+            db.close()
+
+            await websocket.send_json({
+                "queue_depth": queue_depth,
+                "dead_letter_count": dead_letter_count,
+                "total_jobs": total_jobs,
+                "completed": completed,
+                "failed": failed,
+            })
+            await asyncio.sleep(1)
+    except WebSocketDisconnect:
+        pass
